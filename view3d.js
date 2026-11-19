@@ -54,7 +54,7 @@ const Viewer3D = {
             wallEdge: line(0x94a3b8, 0.45),
             wallEdgeSelected: line(0xf39c12, 0.95),
             basePlate: std(0xf4f0e4, 0.88, 0.02),
-            floorSlab: std(0xcbd5e1, 0.82, 0.03, { transparent: true, opacity: 0.9 }),
+            floorSlab: std(0xcbd5e1, 0.82, 0.03),
 
             // Nyílászárók
             windowFrame: std(0xffffff, 0.38, 0.05),
@@ -1083,16 +1083,23 @@ const Viewer3D = {
         };
 
         const hPx = wallHeight || 135;
+        const slabThickness = 4;
+        const floorStep = hPx + slabThickness;
+
+        // A kiválasztott szint feletti emeletek soha nem jelennek meg, hogy mindig
+        // szabadon be lehessen látni az aktív szintbe; az alatta lévő szintek opcionálisan látszanak.
         const floorsToRender = showAllFloors3D
-            ? floorPlans.map((fp, idx) => ({ fp, idx }))
+            ? floorPlans
+                .slice(0, currentFloor + 1)
+                .map((fp, idx) => ({ fp, idx }))
             : [{ fp: floorPlans[currentFloor], idx: 0 }];
 
         // Épület befoglaló téglalapjának meghatározása (falak + bútorok)
         let minAllX = Infinity, maxAllX = -Infinity, minAllY = Infinity, maxAllY = -Infinity;
         let hasContent = false;
-        let activeFloorCount = 0;
+        let highestActiveFloor = 0;
 
-        floorsToRender.forEach(({ fp }) => {
+        floorsToRender.forEach(({ fp, idx }) => {
             if (!fp) return;
             let floorHasAny = false;
             if (fp.nodes && fp.nodes.length > 0) {
@@ -1119,7 +1126,9 @@ const Viewer3D = {
                     if (f.y + pad > maxAllY) maxAllY = f.y + pad;
                 });
             }
-            if (floorHasAny) activeFloorCount++;
+            if (floorHasAny) {
+                highestActiveFloor = Math.max(highestActiveFloor, idx + 1);
+            }
         });
 
         this._lastBounds = {
@@ -1128,7 +1137,7 @@ const Viewer3D = {
             maxX: maxAllX,
             minY: minAllY,
             maxY: maxAllY,
-            totalHeight: Math.max(1, activeFloorCount) * hPx
+            totalHeight: Math.max(1, highestActiveFloor) * floorStep
         };
 
         // Alaplemez a teljes terv alatt (stabil világkoordinátákon, így szerkesztéskor nem ugrik a modell!)
@@ -1140,7 +1149,7 @@ const Viewer3D = {
         this.addBoxBottom(
             this.buildingGroup,
             plateW,
-            4,
+            slabThickness,
             plateD,
             this.materials.basePlate,
             plateCenterX,
@@ -1154,13 +1163,14 @@ const Viewer3D = {
         floorsToRender.forEach(({ fp, idx }) => {
             if (!fp) return;
 
-            const floorElevation = idx * hPx + 4;
+            const floorElevation = idx * floorStep + slabThickness;
             const isCurrentActiveFloor = (showAllFloors3D ? idx === currentFloor : true);
             const nodeWallMat = isCurrentActiveFloor ? this.materials.wallActive : this.materials.wallInactive;
 
-            // 1. Emeleti födémlemez (felsőbb szintek alatt, pontosan a szint aljára igazítva)
+            // 1. Emeleti födémlemez (felsőbb szintek alatt, rés- és Z-fighting mentesen a falak tetején)
             if (idx > 0 && ((fp.walls && fp.walls.length > 0) || (fp.furnitures && fp.furnitures.length > 0))) {
                 let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                let maxWallT = 24;
                 if (fp.nodes) {
                     fp.nodes.forEach(n => {
                         if (n.x < minX) minX = n.x;
@@ -1169,17 +1179,23 @@ const Viewer3D = {
                         if (n.y > maxY) maxY = n.y;
                     });
                 }
+                if (fp.walls) {
+                    fp.walls.forEach(w => {
+                        const t = w.thickness || 20;
+                        if (t > maxWallT) maxWallT = t;
+                    });
+                }
                 if (minX < maxX && minY < maxY) {
-                    const slabW = (maxX - minX) + 26;
-                    const slabD = (maxY - minY) + 26;
+                    const slabW = (maxX - minX) + maxWallT + 2;
+                    const slabD = (maxY - minY) + maxWallT + 2;
                     this.addBoxBottom(
                         this.buildingGroup,
                         slabW,
-                        4,
+                        slabThickness,
                         slabD,
                         this.materials.floorSlab,
                         (minX + maxX) / 2 - this.WORLD_ORIGIN_X,
-                        floorElevation - 4,
+                        floorElevation - slabThickness,
                         (minY + maxY) / 2 - this.WORLD_ORIGIN_Y,
                         false,
                         true

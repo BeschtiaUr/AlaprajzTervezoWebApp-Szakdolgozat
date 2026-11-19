@@ -374,6 +374,12 @@ function updatePropertyPanelUI() {
 
     if (!emptyBox || !editorBox) return;
 
+    if (viewMode === '3d') {
+        emptyBox.style.display = 'none';
+        editorBox.style.display = 'none';
+        return;
+    }
+
     wallFields.style.display = 'none';
     winFields.style.display = 'none';
     doorFields.style.display = 'none';
