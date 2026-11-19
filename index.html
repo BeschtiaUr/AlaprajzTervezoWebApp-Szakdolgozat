@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alaprajz Tervező Webalkalmazás</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Firebase & jsPDF -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- Three.js 3D Motor és OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <!-- ==================== 1. BEJELENTKEZŐ KÉPERNYŐ ==================== -->
+    <div id="login-screen" class="login-wrapper">
+        <div class="auth-card">
+            <div class="auth-brand">
+                <div class="brand-icon">📐</div>
+                <h1>Alaprajz Tervező</h1>
+                <p>2D/3D CAD Webes Tervezőrendszer</p>
+            </div>
+
+            <div class="auth-tabs">
+                <button id="tabLoginBtn" class="auth-tab active">Bejelentkezés</button>
+                <button id="tabRegisterBtn" class="auth-tab">Fiók létrehozása</button>
+            </div>
+
+            <div class="auth-form">
+                <div id="registerNameGroup" class="form-group" style="display: none;">
+                    <label for="registerNameInput">Megjelenítendő név</label>
+                    <input type="text" id="registerNameInput" placeholder="Pl. Kovács János">
+                </div>
+
+                <div class="form-group">
+                    <label for="emailInput">E-mail cím</label>
+                    <input type="email" id="emailInput" placeholder="pelda@egyetem.hu">
+                </div>
+
+                <div class="form-group">
+                    <label for="passwordInput">Jelszó</label>
+                    <input type="password" id="passwordInput" placeholder="••••••••">
+                </div>
+
+                <p id="authError" class="auth-error" style="display: none;"></p>
+
+                <button id="loginBtn" class="primary-auth-btn">Bejelentkezés</button>
+                <button id="registerBtn" class="primary-auth-btn" style="display: none;">Regisztráció és Belépés</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 2. KIBŐVÍTETT FŐMENÜ (DASHBOARD) ==================== -->
+    <div id="dashboard-screen" class="dashboard-wrapper" style="display: none;">
+        
+        <aside class="dashboard-sidebar">
+            <div class="sidebar-brand">
+                <span class="brand-logo">📐</span>
+                <div>
+                    <h2>Alaprajz Tervező</h2>
+                    <span class="version-badge">v2.3 (Osztott 2D/3D)</span>
+                </div>
+            </div>
+
+            <button id="createNewPlanBtn" class="new-plan-cta">+ Új üres terv indítása</button>
+
+            <nav class="dashboard-nav">
+                <button class="dash-nav-btn active" data-tab="my-plans">
+                    <span class="nav-icon">📁</span> Saját tervek
+                    <span id="myPlansCountBadge" class="nav-badge">0</span>
+                </button>
+                <button class="dash-nav-btn" data-tab="templates">
+                    <span class="nav-icon">🏛️</span> Sablonok
+                </button>
+                <button class="dash-nav-btn" data-tab="trash">
+                    <span class="nav-icon">🗑️</span> Lomtár
+                    <span id="trashCountBadge" class="nav-badge">0</span>
+                </button>
+                <div class="nav-divider"></div>
+                <button class="dash-nav-btn" data-tab="help">
+                    <span class="nav-icon">❓</span> Súgó és Irányítás
+                </button>
+                <button class="dash-nav-btn" data-tab="settings">
+                    <span class="nav-icon">⚙️</span> Beállítások
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile-mini">
+                    <div class="avatar-circle" id="userAvatarInitials">U</div>
+                    <div class="user-meta">
+                        <input class="name-input" type="text" id="userNameInput" placeholder="Felhasználó" title="Kattints a név szerkesztéséhez">
+                        <span id="userEmailDisplay" class="user-email-text">-</span>
+                    </div>
+                </div>
+                <button id="dashboardLogoutBtn" class="logout-pill-btn">Kijelentkezés</button>
+            </div>
+        </aside>
+
+        <main class="dashboard-main">
+            <div id="localCacheRecoveryBanner" class="cache-recovery-banner" style="display: none;">
+                <div class="cache-banner-info">
+                    <strong>💾 Automatikusan mentett munkamenet található a böngésző memóriájában!</strong>
+                    <span id="cacheRecoveryDetails">Terv: -</span>
+                </div>
+                <div class="cache-banner-actions">
+                    <button id="restoreCacheBtn" class="card-btn primary">Folytatás a Cache-ből</button>
+                    <button id="discardCacheBtn" class="card-btn danger">Elvetés</button>
+                </div>
+            </div>
+
+            <header class="dashboard-header">
+                <div>
+                    <h1 id="dashboardSectionTitle">Saját tervek</h1>
+                    <p id="dashboardSectionSubtitle">Kezeld a felhőbe mentett építészeti alaprajzaidat.</p>
+                </div>
+                <div class="header-actions" id="searchBarContainer">
+                    <input type="text" id="planSearchInput" class="search-input" placeholder="🔍 Keresés a tervek között...">
+                </div>
+            </header>
+
+            <section id="tab-my-plans" class="dash-tab-content active">
+                <div id="saved-plans-list" class="plans-grid"></div>
+            </section>
+
+            <section id="tab-templates" class="dash-tab-content" style="display: none;">
+                <div id="templates-list" class="plans-grid"></div>
+            </section>
+
+            <section id="tab-trash" class="dash-tab-content" style="display: none;">
+                <div class="trash-Banner">
+                    <span>A lomtárba helyezett tervek bármikor visszaállíthatók vagy véglegesen törölhetők.</span>
+                    <button id="emptyTrashBtn" class="danger-outline-btn">Lomtár ürítése</button>
+                </div>
+                <div id="trash-plans-list" class="plans-grid"></div>
+            </section>
+
+            <section id="tab-help" class="dash-tab-content" style="display: none;">
+                <div class="help-grid">
+                    <div class="help-card">
+                        <h3>⌨️ 2D / 3D Gyorsbillentyűk és Vezérlés</h3>
+                        <ul class="shortcut-list">
+                            <li><kbd>Bal klikk (2D)</kbd> <span>Elem kijelölése vagy új fal/nyílászáró/bútor lerakása</span></li>
+                            <li><kbd>Bal klikk + Húzás (3D)</kbd> <span>3D épületmodell szabad forgatása (Orbit)</span></li>
+                            <li><kbd>Jobb klikk + Húzás (3D)</kbd> <span>3D kamera oldalirányú eltolása (Panning)</span></li>
+                            <li><kbd>Görgő (3D)</kbd> <span>3D kamera közelítése / távolítása</span></li>
+                            <li><kbd>Középső egérgomb (2D)</kbd> <span>Végtelenített 2D rajzvászon mozgatása</span></li>
+                            <li><kbd>R</kbd> billentyű <span>Bútor 45°-os forgatása / Ajtó nyitásirány váltása</span></li>
+                            <li><kbd>Ctrl</kbd> + <kbd>Z</kbd> <span>Utolsó művelet visszavonása (szintenként 20 lépésig)</span></li>
+                            <li><kbd>Delete</kbd> / <kbd>Backspace</kbd> <span>Kijelölt vagy kurzor alatti elem törlése</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="help-card">
+                        <h3>🧊 3D Motor & Osztott Nézet</h3>
+                        <div class="workflow-steps">
+                            <div class="step-item">
+                                <strong>1. Osztott 2D/3D Képernyő:</strong>
+                                <p>A felső sáv <em>◫ Osztott (2D/3D)</em> gombjával párhuzamosan szerkeszthetsz 2D-ben, miközben a jobb oldali 3D modell valós időben frissül. A két nézet aránya a középső sávval állítható.</p>
+                            </div>
+                            <div class="step-item">
+                                <strong>2. Valós idejű Nyílászáró Kivágások & 3D Bútorok:</strong>
+                                <p>Az ajtók és ablakok helyét a rendszer automatikusan kivágja a 3D falakból és térbeli modelleket helyez beléjük, a 2D bútorszimbólumok pedig 3D bútorokként jelennek meg.</p>
+                            </div>
+                            <div class="step-item">
+                                <strong>3. Folyamatos Böngésző Cache:</strong>
+                                <p>Minden módosítás azonnal elmentődik a böngésző helyi memóriájába, így oldalfrissítéskor sem vész el a munka.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="tab-settings" class="dash-tab-content" style="display: none;">
+                <div class="settings-container">
+                    <div class="settings-card">
+                        <h3>👤 Felhasználói Profil</h3>
+                        <div class="form-group">
+                            <label for="settingsNameInput">Megjelenített név</label>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="text" id="settingsNameInput" placeholder="Felhasználónév">
+                                <button id="saveProfileBtn" class="tool-btn active">Mentés</button>
+                            </div>
+                        </div>
+                        <p id="profileSaveFeedback" class="feedback-msg" style="display: none;">Profil sikeresen frissítve!</p>
+                    </div>
+
+                    <div class="settings-card">
+                        <h3>🛠️ Szerkesztő Alapértelmezések</h3>
+                        <div class="form-group">
+                            <label for="settingDefaultThickness">Alapértelmezett falvastagság (px): <span id="settingThicknessVal">20</span></label>
+                            <input type="range" id="settingDefaultThickness" min="5" max="40" value="20">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="settingGridSize">Rácsháló sűrűsége (GRID_SIZE): <span id="settingGridVal">20</span> px</label>
+                            <input type="range" id="settingGridSize" min="10" max="50" step="5" value="20">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="settingUnitSystem">Mértékegység kijelzés</label>
+                            <select id="settingUnitSystem" class="settings-select">
+                                <option value="cm">Centiméter (1 px = 2 cm)</option>
+                                <option value="px">Pixel (px)</option>
+                            </select>
+                        </div>
+
+                        <button id="saveEditorSettingsBtn" class="tool-btn active" style="margin-top: 10px;">Beállítások alkalmazása</button>
+                        <p id="settingsSaveFeedback" class="feedback-msg" style="display: none;">Beállítások elmentve!</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ==================== 3. 2D / 3D SZERKESZTŐ FELÜLET ==================== -->
+    <div class="main-wrapper" id="main-app" style="display: none;">
+        
+        <!-- BAL OLDALI ESZKÖZTÁR -->
+        <div class="toolbar left-toolbar">
+            
+            <!-- 2D RAJZESZKÖZÖK CSOPORTJA (3D nézetben automatikusan elrejtődik) -->
+            <div id="left2DToolsGroup" style="display: flex; flex-direction: column; gap: 5px;">
+                <h2>Építészeti Elemek</h2>
+                <button id="selectBtn" class="tool-btn">🖱️ Kijelölés / Szerkesztés</button>
+                <button id="wallsBtn" class="tool-btn active">🧱 Fal rajzolása</button>
+                <button id="windowsBtn" class="tool-btn">🪟 Ablak beillesztése</button>
+                <button id="doorsBtn" class="tool-btn">🚪 Ajtó beillesztése</button>
+                
+                <button id="ninetyDegreeBtn" class="ninety-degree-btn" style="margin-top: 4px;">90° mode OFF</button>
+
+                <div class="sidebar-section-divider"></div>
+
+                <h2>Pauszpapír & Nézet</h2>
+                <label for="bgUpload" class="tool-btn" style="text-align: center; display: block; background-color: #F4F0E4; color: rgb(41, 40, 40); cursor: pointer; font-size: 14px;">
+                    📄 Alaprajz feltöltése
+                </label>
+                <input type="file" id="bgUpload" accept="image/*" style="display: none;">
+                <p style="font-size: 13px; margin: 4px 0 2px 0;">Áttetszőség: <span id="opacityDisplay">1.00</span></p>
+                <input type="range" id="opacitySlider" min="0" max="1" step="0.01" value="1" style="width: 100%;">
+
+                <button id="isDrawingBtn" class="isDrawing-btn active" style="background-color: #44A194; width: 100%; text-align: center; margin-top: 6px; font-size: 14px;">Show Plans: On</button>
+
+                <div class="sidebar-section-divider"></div>
+            </div>
+
+            <!-- 3D NÉZETI SEGÉDLET (Kizárólag 3D nézetben látszik a bal sávon) -->
+            <div id="left3DInfoGroup" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+                <h2>🧊 3D Megjelenítés</h2>
+                <div class="databar" style="font-size: 13px; line-height: 1.5;">
+                    <p style="display:block;"><strong>🖱️ Bal gomb + húzás:</strong><br>Épület forgatása</p>
+                    <p style="display:block;"><strong>🖱️ Jobb gomb + húzás:</strong><br>Kamera eltolása</p>
+                    <p style="display:block;"><strong>🖱️ Egérgörgő:</strong><br>Közelítés / Távolítás</p>
+                </div>
+                <div class="sidebar-section-divider"></div>
+            </div>
+
+            <h2>Emeletkezelés</h2>
+            <div style="display: flex; gap: 6px;">
+                <button id="switchToLowerFloorBtn" class="floor-btn" style="flex: 1; text-align: center; background-color: #34495e;">▼ Alsó</button>
+                <button id="switchToUpperFloorBtn" class="floor-btn" style="flex: 1; text-align: center; background-color: #44A194;">▲ Felső</button>
+            </div>
+            <div class="floor-indicator" id="floorIndicator" style="margin-top: 4px; padding: 10px;">
+                <p style="font-size: 13px; margin: 0;">Aktuális szint: <span id="currentFloorDisplay">1</span>. emelet</p>
+            </div>
+
+            <button id="clearBtn" class="clear-btn" style="margin-top: auto;">Vászon törlése</button>
+            <button id="backToMenuBtn" class="clear-btn" style="background-color: #f39c12; margin-top: 6px;">Vissza a Főmenübe</button>           
+            <button id="logoutBtn" class="clear-btn" style="background-color: #34495e; margin-top: 6px;">Kijelentkezés</button>
+        </div>
+        
+        <!-- KÖZPONTI MUNKATERÜLET: FELSŐ NÉZETVÁLTÓ SÁV + 2D VÁSZON ÉS 3D WEBGL NÉZET -->
+        <div class="workspace-center">
+            <div class="workspace-topbar">
+                <div class="topbar-left">
+                    <span id="activePlanTitleDisplay" class="active-plan-name">Új alaprajz</span>
+                    <span id="cacheStatusBadge" class="cache-status-badge local">💾 Cache: Kész</span>
+                </div>
+
+                <div class="view-mode-switcher">
+                    <button id="view2DBtn" class="view-switch-btn active">📐 2D Tervrajz</button>
+                    <button id="viewSplitBtn" class="view-switch-btn">◫ Osztott (2D/3D)</button>
+                    <button id="view3DBtn" class="view-switch-btn">🧊 3D Nézet</button>
+                </div>
+
+                <div class="topbar-right">
+                    <button id="reset3DCameraBtn" class="mini-top-btn" style="display: none;">🎥 Kamera alaphelyzet</button>
+                </div>
+            </div>
+
+            <!-- Vászon Konténer (2D Canvas + Átméretezhető Elválasztó + 3D Three.js konténer) -->
+            <div class="canvas-container mode-2d" id="canvasContainer">
+                <div id="pane-2d" class="viewport-pane pane-2d">
+                    <div class="viewport-badge badge-2d">📐 2D Szerkesztő</div>
+                    <canvas id="floorplan" width="1000" height="700"></canvas>
+                </div>
+
+                <div id="splitResizer" class="split-resizer" style="display: none;" title="Húzd a 2D és 3D nézet arányának módosításához">
+                    <div class="split-resizer-handle"></div>
+                </div>
+
+                <div id="pane-3d" class="viewport-pane pane-3d" style="display: none;">
+                    <div class="viewport-badge badge-3d">🧊 3D Élő Nézet</div>
+                    <div id="three-container" class="three-viewport"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- JOBB OLDALI DINAMIKUS SÁV -->
+        <div class="right-sidebar">
+            
+            <!-- 3D FALBEÁLLÍTÁSOK PANEL (CSAK 3D NÉZETBEN LÁTSZIK!) -->
+            <div class="toolbar" id="wall3DSettingsWidget" style="display: none;">
+                <h2>🧊 3D Falbeállítások</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                    <span>Falmagasság (cm):</span>
+                    <input type="number" id="wallHeightInputCm" value="270" min="100" max="500" step="10" class="mini-num-input">
+                </div>
+                <input type="range" id="wallHeightSliderCm" min="100" max="500" step="10" value="270" style="width: 100%;">
+                <label class="checkbox-row">
+                    <input type="checkbox" id="showAllFloors3DCheckbox" checked>
+                    <span>Összes emelet megjelenítése 3D-ben</span>
+                </label>
+            </div>
+
+            <!-- 1. BÚTORKATALÓGUS (CSAK 2D NÉZETBEN LÁTSZIK!) -->
+            <div class="toolbar right-widget" id="rightFurnitureCatalogWidget">
+                <h2>Bútorkatalógus</h2>
+                <div class="category-tabs">
+                    <button class="cat-tab active" data-cat="living">🛋️ Nappali</button>
+                    <button class="cat-tab" data-cat="kitchen">🍳 Konyha</button>
+                    <button class="cat-tab" data-cat="bedroom">🛏️ Háló</button>
+                    <button class="cat-tab" data-cat="other">🛁 Egyéb</button>
+                </div>
+                <div id="furnitureCategoryItems" class="furniture-items-list"></div>
+            </div>
+
+            <!-- 2. ALAPÉRTELMEZETT ESZKÖZ CSÚSZKÁK (CSAK 2D NÉZETBEN LÁTSZIK!) -->
+            <div class="toolbar" id="wallSettingsWidget" style="display:flex;">
+                <h2>Új Fal Vastagsága</h2>
+                <p style="font-size: 13px; margin: 2px 0;">Alap falvastagság: <strong id="thicknessDisplay">40</strong> cm</p>
+                <input type="range" id="thicknessSlider" min="5" max="40" value="20" style="width: 100%;">
+            </div>
+
+            <div class="toolbar" id="furnitureSettingsWidget" style="display:none;">
+                <h2>Új Bútor Arány</h2>
+                <p style="font-size: 13px; margin: 2px 0;">Alap méretszorzó: <strong id="sizeDisplay">100</strong> %</p>
+                <input type="range" id="sizeSlider" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+            
+            <!-- 3. TULAJDONSÁGOK ÉS MENTÉS PANEL -->
+            <div class="toolbar properties-widget">
+                <h2 id="propertiesWidgetTitle">Tulajdonságok</h2>
+                
+                <div id="emptySelectionBox" class="databar">
+                    <p>Kurzor alatt: <span id="infoType">-</span></p>
+                    <p>Méret: <span id="infoSize">-</span></p>
+                    <small class="hint-text">💡 Kattints egy elemre a vásznon a pontos (cm, fok) szerkesztéshez!</small>
+                </div>
+
+                <div id="dynamicPropertyEditor" class="prop-editor-box" style="display: none;">
+                    <div class="prop-header">
+                        <span id="propElementTitle" class="prop-badge">Elem</span>
+                        <button id="closePropEditorBtn" class="prop-close-btn" title="Kijelölés megszüntetése">✕</button>
+                    </div>
+
+                    <div id="propWallFields" class="prop-group" style="display: none;">
+                        <label>Fal hossza (cm):</label>
+                        <input type="number" id="inputWallLengthCm" min="10" max="5000" step="1">
+                        <label>Fal vastagsága (cm):</label>
+                        <input type="number" id="inputWallThicknessCm" min="10" max="120" step="2">
+                        <label>Irányszög (°):</label>
+                        <input type="number" id="inputWallAngleDeg" min="-180" max="360" step="1">
+                    </div>
+
+                    <div id="propWindowFields" class="prop-group" style="display: none;">
+                        <label>Ablak szélessége (cm):</label>
+                        <input type="number" id="inputWindowLengthCm" min="30" max="600" step="2">
+                        <label>Pozíció a fal mentén (%):</label>
+                        <input type="number" id="inputWindowPosPct" min="5" max="95" step="1">
+                    </div>
+
+                    <div id="propDoorFields" class="prop-group" style="display: none;">
+                        <label>Ajtó szélessége (cm):</label>
+                        <input type="number" id="inputDoorLengthCm" min="40" max="400" step="2">
+                        <label>Pozíció a fal mentén (%):</label>
+                        <input type="number" id="inputDoorPosPct" min="5" max="95" step="1">
+                        <label>Nyitásirány (Forgatás):</label>
+                        <select id="inputDoorRotation" class="prop-select">
+                            <option value="0">0 – Balos, befelé nyíló</option>
+                            <option value="1">1 – Jobbos, befelé nyíló</option>
+                            <option value="2">2 – Balos, kifelé nyíló</option>
+                            <option value="3">3 – Jobbos, kifelé nyíló</option>
+                        </select>
+                    </div>
+
+                    <div id="propFurnitureFields" class="prop-group" style="display: none;">
+                        <label>Szélesség (cm):</label>
+                        <input type="number" id="inputFurnWidthCm" min="20" max="1000" step="2">
+                        <label>Hosszúság / Mélység (cm):</label>
+                        <input type="number" id="inputFurnHeightCm" min="20" max="1000" step="2">
+                        <label>Forgatási szög (°):</label>
+                        <input type="number" id="inputFurnAngleDeg" min="-360" max="360" step="5">
+                    </div>
+
+                    <button id="deleteSelectedElementBtn" class="prop-delete-btn">🗑️ Kijelölt elem törlése</button>
+                </div>
+                
+                <div class="export-actions-group">
+                    <button id="saveToCloudBtn" class="tool-btn export-btn">☁️ Mentés felhőbe</button>
+                    <div style="display: flex; gap: 5px;">
+                        <button id="saveAsPNGBtn" class="tool-btn export-btn" style="flex: 1;">🖼️ PNG</button>
+                        <button id="saveAsPDFBtn" class="tool-btn export-btn" style="flex: 1;">📄 PDF</button>
+                    </div>
+                </div>
+            </div>
+        </div> 
+    </div>
+
+    <script src="state.js"></script>
+    <script src="auth.js"></script> 
+    <script src="helpers.js"></script>
+    <script src="draw.js"></script>
+    <script src="view3d.js"></script>
+    <script src="events.js"></script>
+</body>
+</html>

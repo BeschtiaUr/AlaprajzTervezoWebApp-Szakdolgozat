@@ -1,1 +1,1 @@
-# AlaprajzTervezoWebApp-Szakdolgozat
+# Onlab-AlaprajzTervezo
